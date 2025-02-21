@@ -22,7 +22,6 @@
             max-width: 600px;
             width: 90%;
             margin: 20px;
-            box-sizing: border-box;
         }
         h1 {
             color: #2c3e50;
@@ -74,7 +73,6 @@
             font-size: 1rem;
             cursor: pointer;
             transition: transform 0.2s, background 0.3s;
-            touch-action: manipulation;
         }
         button:hover:not(:disabled) {
             transform: translateY(-2px);
@@ -92,7 +90,6 @@
             word-break: break-all;
             color: #555;
             position: relative;
-            min-height: 50px;
         }
         #copyBtn {
             position: absolute;
@@ -109,15 +106,9 @@
             width: 100%;
             margin-top: 1rem;
         }
-        #status {
-            text-align: center;
-            color: #777;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-        }
         @media (max-width: 480px) {
             .container {
-                padding: 1rem;
+                padding: 1.5rem;
             }
             h1 {
                 font-size: 1.5rem;
@@ -125,9 +116,6 @@
             button {
                 padding: 0.6rem 1.2rem;
                 font-size: 0.9rem;
-            }
-            textarea {
-                height: 100px;
             }
         }
     </style>
@@ -156,29 +144,21 @@
             <button id="playBtn" onclick="playAudio()" disabled>Play</button>
             <button id="downloadBtn" onclick="downloadAudio()" disabled>Download</button>
         </div>
-        <div id="status"></div>
     </div>
 
     <script>
         let audioBlob = null;
         let audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const statusEl = document.getElementById('status');
 
         function textToBase3(text) {
-<<<<<<< HEAD
             let num = 0n;
             for (let char of text) {
                 const codePoint = BigInt(char.codePointAt(0));
-                num = num * 0x200000n + codePoint;
+                num = num * 0x200000n + codePoint; // 0x200000 = 2^21，涵蓋 Unicode 範圍
             }
             if (num === 0n) return 'o';
 
-=======
-            const asciiArray = Array.from(text).map(char => char.charCodeAt(0));
-            let num = BigInt(asciiArray.reduce((acc, val) => acc * 256n + BigInt(val), 0n));
->>>>>>> parent of f926ca1 (support chinese)
             let base3 = '';
-            if (num === 0n) return 'o';
             while (num > 0n) {
                 const digit = num % 3n;
                 base3 = (digit === 0n ? 'o' : digit === 1n ? 'i' : 'a') + base3;
@@ -188,7 +168,6 @@
         }
 
         function base3ToText(base3) {
-            // 將 o=0, i=1, a=2 轉回數字
             let num = 0n;
             for (let char of base3) {
                 if (char === 'o') num = num * 3n + 0n;
@@ -197,18 +176,16 @@
                 else throw new Error('Invalid character in base3 string. Use only o, i, a.');
             }
 
-<<<<<<< HEAD
             let codePoints = [];
-            const maxCodePoint = 0x200000n;
-=======
-            // 將數字轉回 ASCII 字串
-            let bytes = [];
->>>>>>> parent of f926ca1 (support chinese)
+            const maxCodePoint = 0x200000n; // 2^21
             while (num > 0n) {
-                bytes.unshift(Number(num % 256n));
-                num = num / 256n;
+                const codePoint = Number(num % maxCodePoint);
+                if (codePoint <= 0x10FFFF) {
+                    codePoints.unshift(codePoint);
+                }
+                num = num / maxCodePoint;
             }
-            return String.fromCharCode(...bytes);
+            return String.fromCodePoint(...codePoints);
         }
 
         async function processInput() {
@@ -221,13 +198,12 @@
                 return;
             }
 
-            statusEl.textContent = 'Processing...';
             try {
                 if (mode === 'encode') {
                     const encoded = textToBase3(input);
                     resultText.textContent = 'Encoded Result: ' + encoded;
                     await generateAudio(encoded);
-                } else {
+                } else { // decode
                     if (!/^[oia]+$/.test(input)) {
                         throw new Error('Decode input must contain only o, i, a');
                     }
@@ -242,42 +218,29 @@
                 audioPlayer.style.display = 'block';
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('downloadBtn').disabled = false;
-                statusEl.textContent = 'Processing complete!';
 
             } catch (error) {
                 console.error('Processing failed:', error);
-                statusEl.textContent = `Error: ${error.message}`;
-                alert(`Processing failed: ${error.message}. Check console for details.`);
+                alert(`Processing failed: ${error.message}`);
             }
         }
 
         async function generateAudio(encodedString) {
             const audioFiles = {
-                'o': './media/o.mov', // 更新為 .wav，確保檔案格式正確
+                'o': './media/o.mov',
                 'i': './media/i.mov',
                 'a': './media/a.mov'
             };
 
-            console.log('Generating audio for:', encodedString);
-            statusEl.textContent = 'Loading audio files...';
             const audioBuffers = await Promise.all(
-                Array.from(encodedString).map(async (char, index) => {
-                    const url = audioFiles[char];
-                    console.log(`Fetching ${url} (index: ${index})`);
-                    const response = await fetch(url, { cache: 'no-store' }); // 避免快取問題
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-                    }
+                Array.from(encodedString).map(async char => {
+                    const response = await fetch(audioFiles[char]);
+                    if (!response.ok) throw new Error(`Failed to fetch ${audioFiles[char]}`);
                     const arrayBuffer = await response.arrayBuffer();
-                    console.log(`Decoding ${url}...`);
-                    return audioContext.decodeAudioData(arrayBuffer).catch(err => {
-                        throw new Error(`Failed to decode ${url}: ${err.message}`);
-                    });
+                    return audioContext.decodeAudioData(arrayBuffer);
                 })
             );
 
-            console.log('All audio files decoded successfully');
-            statusEl.textContent = 'Combining audio...';
             const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
             const sampleRate = audioBuffers[0].sampleRate;
             const numberOfChannels = audioBuffers[0].numberOfChannels;
@@ -296,10 +259,7 @@
 
         function playAudio() {
             const audioPlayer = document.getElementById('audioPlayer');
-            audioPlayer.play().catch(err => {
-                console.error('Playback failed:', err);
-                statusEl.textContent = 'Error: Playback failed';
-            });
+            audioPlayer.play();
         }
 
         function downloadAudio() {
@@ -316,33 +276,14 @@
 
         function copyResult() {
             const resultText = document.getElementById('resultText').textContent.split(': ')[1] || '';
-<<<<<<< HEAD
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(resultText)
-                    .then(() => console.log('Result copied to clipboard'))
-                    .catch(err => {
-                        console.error('Copy failed:', err);
-                        alert('Failed to copy result');
-                    });
-            } else {
-                const textarea = document.createElement('textarea');
-                textarea.value = resultText;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                console.log('Result copied to clipboard (fallback)');
-            }
-=======
             navigator.clipboard.writeText(resultText)
                 .then(() => {
-                    <!-- alert('Result copied to clipboard!'); -->
+                    // alert('Result copied to clipboard!');
                 })
                 .catch(err => {
                     console.error('Copy failed:', err);
                     alert('Failed to copy result');
                 });
->>>>>>> parent of f926ca1 (support chinese)
         }
 
         function audioBufferToWav(buffer) {
