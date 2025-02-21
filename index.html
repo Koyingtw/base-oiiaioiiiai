@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Base3 Audio Encoder</title>
+    <title>Base3 Audio Encoder/Decoder</title>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -28,6 +28,19 @@
             text-align: center;
             margin-bottom: 1.5rem;
             font-size: 2rem;
+        }
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .mode-selector label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1rem;
+            color: #555;
         }
         textarea {
             width: 100%;
@@ -69,13 +82,25 @@
             background: #bdc3c7;
             cursor: not-allowed;
         }
-        #encodedText {
+        #resultBox {
             margin: 1.5rem 0;
             padding: 1rem;
             background: #f9f9f9;
             border-radius: 10px;
             word-break: break-all;
             color: #555;
+            position: relative;
+        }
+        #copyBtn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 0.5rem 1rem;
+            background: #2ecc71;
+            font-size: 0.9rem;
+        }
+        #copyBtn:hover:not(:disabled) {
+            background: #27ae60;
         }
         #audioPlayer {
             width: 100%;
@@ -97,13 +122,23 @@
 </head>
 <body>
     <div class="container">
-        <h1>Base3 Audio Encoder</h1>
-        <div class="tenor-gif-embed" data-postid="13397875673260883779" data-share-method="host" data-aspect-ratio="0.965863" data-width="100%"><a href="https://tenor.com/view/oiia-oiiaoiia-oiia-oiia-cat-gif-13397875673260883779">Oiia Oiiaoiia GIF</a>from <a href="https://tenor.com/search/oiia-gifs">Oiia GIFs</a></div> <script type="text/javascript" async src="https://tenor.com/embed.js"></script>
-        <textarea id="inputText" placeholder="Enter your text here..."></textarea>
-        <div class="button-group">
-            <button onclick="encodeAndProcess()">Encode & Generate Audio</button>
+        <h1>Base3 Audio Encoder/Decoder</h1>
+        <div class="tenor-gif-embed" data-postid="13397875673260883779" data-share-method="host" data-aspect-ratio="0.965863" data-width="100%">
+            <a href="https://tenor.com/view/oiia-oiiaoiia-oiia-oiia-cat-gif-13397875673260883779">Oiia Oiiaoiia GIF</a> from <a href="https://tenor.com/search/oiia-gifs">Oiia GIFs</a>
         </div>
-        <div id="encodedText"></div>
+        <script type="text/javascript" async src="https://tenor.com/embed.js"></script>
+        <div class="mode-selector">
+            <label><input type="radio" name="mode" value="encode" checked> Encode</label>
+            <label><input type="radio" name="mode" value="decode"> Decode</label>
+        </div>
+        <textarea id="inputText" placeholder="Enter your text here (for Encode) or o/i/a string (for Decode)..."></textarea>
+        <div class="button-group">
+            <button onclick="processInput()">Process</button>
+        </div>
+        <div id="resultBox">
+            <span id="resultText"></span>
+            <button id="copyBtn" onclick="copyResult()" disabled>Copy</button>
+        </div>
         <audio id="audioPlayer" controls style="display: none;"></audio>
         <div class="button-group">
             <button id="playBtn" onclick="playAudio()" disabled>Play</button>
@@ -119,9 +154,7 @@
             const asciiArray = Array.from(text).map(char => char.charCodeAt(0));
             let num = BigInt(asciiArray.reduce((acc, val) => acc * 256n + BigInt(val), 0n));
             let base3 = '';
-            
             if (num === 0n) return 'o';
-            
             while (num > 0n) {
                 const digit = num % 3n;
                 base3 = (digit === 0n ? 'o' : digit === 1n ? 'i' : 'a') + base3;
@@ -130,57 +163,92 @@
             return base3;
         }
 
-        async function encodeAndProcess() {
+        function base3ToText(base3) {
+            // 將 o=0, i=1, a=2 轉回數字
+            let num = 0n;
+            for (let char of base3) {
+                if (char === 'o') num = num * 3n + 0n;
+                else if (char === 'i') num = num * 3n + 1n;
+                else if (char === 'a') num = num * 3n + 2n;
+                else throw new Error('Invalid character in base3 string. Use only o, i, a.');
+            }
+
+            // 將數字轉回 ASCII 字串
+            let bytes = [];
+            while (num > 0n) {
+                bytes.unshift(Number(num % 256n));
+                num = num / 256n;
+            }
+            return String.fromCharCode(...bytes);
+        }
+
+        async function processInput() {
             const input = document.getElementById('inputText').value;
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const resultText = document.getElementById('resultText');
+
             if (!input) {
                 alert('Please enter some text');
                 return;
             }
 
-            const encoded = textToBase3(input);
-            document.getElementById('encodedText').textContent = 'Encoded Result: ' + encoded;
-
             try {
-                const audioFiles = {
-                    'o': './media/o.mov',
-                    'i': './media/i.mov',
-                    'a': './media/a.mov'
-                };
-
-                const audioBuffers = await Promise.all(
-                    Array.from(encoded).map(async char => {
-                        const response = await fetch(audioFiles[char]);
-                        const arrayBuffer = await response.arrayBuffer();
-                        return audioContext.decodeAudioData(arrayBuffer);
-                    })
-                );
-
-                const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
-                const sampleRate = audioBuffers[0].sampleRate;
-                const numberOfChannels = audioBuffers[0].numberOfChannels;
-                const combinedBuffer = audioContext.createBuffer(numberOfChannels, totalLength, sampleRate);
-
-                let offset = 0;
-                for (let buffer of audioBuffers) {
-                    for (let channel = 0; channel < numberOfChannels; channel++) {
-                        combinedBuffer.getChannelData(channel).set(buffer.getChannelData(channel), offset);
+                if (mode === 'encode') {
+                    const encoded = textToBase3(input);
+                    resultText.textContent = 'Encoded Result: ' + encoded;
+                    await generateAudio(encoded);
+                } else { // decode
+                    if (!/^[oia]+$/.test(input)) {
+                        throw new Error('Decode input must contain only o, i, a');
                     }
-                    offset += buffer.length;
+                    const decoded = base3ToText(input);
+                    resultText.textContent = 'Decoded Result: ' + decoded;
+                    await generateAudio(input);
                 }
 
-                audioBlob = audioBufferToWav(combinedBuffer);
-
+                document.getElementById('copyBtn').disabled = false;
                 const audioPlayer = document.getElementById('audioPlayer');
                 audioPlayer.src = URL.createObjectURL(audioBlob);
                 audioPlayer.style.display = 'block';
-
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('downloadBtn').disabled = false;
 
             } catch (error) {
-                console.error('Audio processing failed:', error);
-                alert('Audio processing failed. Please ensure o.mov, i.mov, and a.mov exist in the media folder and are compatible.');
+                console.error('Processing failed:', error);
+                alert(`Processing failed: ${error.message}`);
             }
+        }
+
+        async function generateAudio(encodedString) {
+            const audioFiles = {
+                'o': './media/o.mov', // 更新為 .wav，確保檔案格式正確
+                'i': './media/i.mov',
+                'a': './media/a.mov'
+            };
+
+            const audioBuffers = await Promise.all(
+                Array.from(encodedString).map(async char => {
+                    const response = await fetch(audioFiles[char]);
+                    if (!response.ok) throw new Error(`Failed to fetch ${audioFiles[char]}`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    return audioContext.decodeAudioData(arrayBuffer);
+                })
+            );
+
+            const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+            const sampleRate = audioBuffers[0].sampleRate;
+            const numberOfChannels = audioBuffers[0].numberOfChannels;
+            const combinedBuffer = audioContext.createBuffer(numberOfChannels, totalLength, sampleRate);
+
+            let offset = 0;
+            for (let buffer of audioBuffers) {
+                for (let channel = 0; channel < numberOfChannels; channel++) {
+                    combinedBuffer.getChannelData(channel).set(buffer.getChannelData(channel), offset);
+                }
+                offset += buffer.length;
+            }
+
+            audioBlob = audioBufferToWav(combinedBuffer);
         }
 
         function playAudio() {
@@ -193,11 +261,23 @@
             const url = URL.createObjectURL(audioBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'encoded_audio.wav';
+            a.download = 'result_audio.wav';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+
+        function copyResult() {
+            const resultText = document.getElementById('resultText').textContent.split(': ')[1] || '';
+            navigator.clipboard.writeText(resultText)
+                .then(() => {
+                    <!-- alert('Result copied to clipboard!'); -->
+                })
+                .catch(err => {
+                    console.error('Copy failed:', err);
+                    alert('Failed to copy result');
+                });
         }
 
         function audioBufferToWav(buffer) {
