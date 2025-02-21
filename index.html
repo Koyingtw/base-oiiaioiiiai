@@ -1,39 +1,113 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Base3 Audio Encoder</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #e0eafc, #cfdef3);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            width: 90%;
+            margin: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            font-size: 2rem;
         }
         textarea {
             width: 100%;
-            height: 100px;
-            margin: 10px 0;
+            height: 120px;
+            padding: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            resize: none;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        textarea:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 1rem;
+            justify-content: center;
         }
         button {
-            padding: 10px 20px;
-            margin: 5px;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 25px;
+            background: #3498db;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
         }
         #encodedText {
-            margin: 15px 0;
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 10px;
             word-break: break-all;
+            color: #555;
+        }
+        #audioPlayer {
+            width: 100%;
+            margin-top: 1rem;
+        }
+        @media (max-width: 480px) {
+            .container {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 1.5rem;
+            }
+            button {
+                padding: 0.6rem 1.2rem;
+                font-size: 0.9rem;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Base3 Audio Encoder</h1>
-    <textarea id="inputText" placeholder="輸入文字..."></textarea>
-    <button onclick="encodeAndProcess()">轉換並生成音訊</button>
-    <div id="encodedText"></div>
-    <audio id="audioPlayer" controls style="display: none;"></audio>
-    <div>
-        <button id="playBtn" onclick="playAudio()" disabled>播放</button>
-        <button id="downloadBtn" onclick="downloadAudio()" disabled>下載</button>
+    <div class="container">
+        <h1>Base3 Audio Encoder</h1>
+        <textarea id="inputText" placeholder="Enter your text here..."></textarea>
+        <div class="button-group">
+            <button onclick="encodeAndProcess()">Encode & Generate Audio</button>
+        </div>
+        <div id="encodedText"></div>
+        <audio id="audioPlayer" controls style="display: none;"></audio>
+        <div class="button-group">
+            <button id="playBtn" onclick="playAudio()" disabled>Play</button>
+            <button id="downloadBtn" onclick="downloadAudio()" disabled>Download</button>
+        </div>
     </div>
 
     <script>
@@ -58,12 +132,12 @@
         async function encodeAndProcess() {
             const input = document.getElementById('inputText').value;
             if (!input) {
-                alert('請輸入文字');
+                alert('Please enter some text');
                 return;
             }
 
             const encoded = textToBase3(input);
-            document.getElementById('encodedText').textContent = '編碼結果: ' + encoded;
+            document.getElementById('encodedText').textContent = 'Encoded Result: ' + encoded;
 
             try {
                 const audioFiles = {
@@ -72,7 +146,6 @@
                     'a': './media/a.mov'
                 };
 
-                // 載入並解碼所有音訊檔案
                 const audioBuffers = await Promise.all(
                     Array.from(encoded).map(async char => {
                         const response = await fetch(audioFiles[char]);
@@ -81,13 +154,11 @@
                     })
                 );
 
-                // 計算總長度並創建新的 AudioBuffer
                 const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
-                const sampleRate = audioBuffers[0].sampleRate; // 假設所有檔案採樣率相同
-                const numberOfChannels = audioBuffers[0].numberOfChannels; // 假設声道數相同
+                const sampleRate = audioBuffers[0].sampleRate;
+                const numberOfChannels = audioBuffers[0].numberOfChannels;
                 const combinedBuffer = audioContext.createBuffer(numberOfChannels, totalLength, sampleRate);
 
-                // 合併音訊數據
                 let offset = 0;
                 for (let buffer of audioBuffers) {
                     for (let channel = 0; channel < numberOfChannels; channel++) {
@@ -96,21 +167,18 @@
                     offset += buffer.length;
                 }
 
-                // 將 AudioBuffer 轉為 WAV 格式（MOV 無法直接在前端生成）
                 audioBlob = audioBufferToWav(combinedBuffer);
 
-                // 更新 audio 元素
                 const audioPlayer = document.getElementById('audioPlayer');
                 audioPlayer.src = URL.createObjectURL(audioBlob);
                 audioPlayer.style.display = 'block';
 
-                // 啟用按鈕
                 document.getElementById('playBtn').disabled = false;
                 document.getElementById('downloadBtn').disabled = false;
 
             } catch (error) {
-                console.error('音訊處理失敗:', error);
-                alert('音訊處理失敗，請確保 media 資料夾中有 o.mov, i.mov, a.mov 檔案且格式兼容');
+                console.error('Audio processing failed:', error);
+                alert('Audio processing failed. Please ensure o.mov, i.mov, and a.mov exist in the media folder and are compatible.');
             }
         }
 
@@ -124,37 +192,34 @@
             const url = URL.createObjectURL(audioBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'encoded_audio.wav'; // 輸出為 WAV 格式
+            a.download = 'encoded_audio.wav';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
 
-        // 將 AudioBuffer 轉為 WAV 的輔助函數
         function audioBufferToWav(buffer) {
             const numberOfChannels = buffer.numberOfChannels;
             const sampleRate = buffer.sampleRate;
-            const length = buffer.length * numberOfChannels * 2; // 2 bytes per sample
+            const length = buffer.length * numberOfChannels * 2;
             const arrayBuffer = new ArrayBuffer(44 + length);
             const view = new DataView(arrayBuffer);
 
-            // WAV 頭資訊
             writeString(view, 0, 'RIFF');
             view.setUint32(4, 36 + length, true);
             writeString(view, 8, 'WAVE');
             writeString(view, 12, 'fmt ');
             view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(20, 1, true);
             view.setUint16(22, numberOfChannels, true);
             view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * numberOfChannels * 2, true); // byte rate
-            view.setUint16(32, numberOfChannels * 2, true); // block align
-            view.setUint16(34, 16, true); // bits per sample
+            view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+            view.setUint16(32, numberOfChannels * 2, true);
+            view.setUint16(34, 16, true);
             writeString(view, 36, 'data');
             view.setUint32(40, length, true);
 
-            // 寫入音訊數據
             let offset = 44;
             for (let i = 0; i < buffer.length; i++) {
                 for (let channel = 0; channel < numberOfChannels; channel++) {
