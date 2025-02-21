@@ -151,10 +151,14 @@
         let audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
         function textToBase3(text) {
-            const asciiArray = Array.from(text).map(char => char.charCodeAt(0));
-            let num = BigInt(asciiArray.reduce((acc, val) => acc * 256n + BigInt(val), 0n));
-            let base3 = '';
+            let num = 0n;
+            for (let char of text) {
+                const codePoint = BigInt(char.codePointAt(0));
+                num = num * 0x200000n + codePoint; // 0x200000 = 2^21，涵蓋 Unicode 範圍
+            }
             if (num === 0n) return 'o';
+
+            let base3 = '';
             while (num > 0n) {
                 const digit = num % 3n;
                 base3 = (digit === 0n ? 'o' : digit === 1n ? 'i' : 'a') + base3;
@@ -164,7 +168,6 @@
         }
 
         function base3ToText(base3) {
-            // 將 o=0, i=1, a=2 轉回數字
             let num = 0n;
             for (let char of base3) {
                 if (char === 'o') num = num * 3n + 0n;
@@ -173,13 +176,16 @@
                 else throw new Error('Invalid character in base3 string. Use only o, i, a.');
             }
 
-            // 將數字轉回 ASCII 字串
-            let bytes = [];
+            let codePoints = [];
+            const maxCodePoint = 0x200000n; // 2^21
             while (num > 0n) {
-                bytes.unshift(Number(num % 256n));
-                num = num / 256n;
+                const codePoint = Number(num % maxCodePoint);
+                if (codePoint <= 0x10FFFF) {
+                    codePoints.unshift(codePoint);
+                }
+                num = num / maxCodePoint;
             }
-            return String.fromCharCode(...bytes);
+            return String.fromCodePoint(...codePoints);
         }
 
         async function processInput() {
@@ -221,7 +227,7 @@
 
         async function generateAudio(encodedString) {
             const audioFiles = {
-                'o': './media/o.mov', // 更新為 .wav，確保檔案格式正確
+                'o': './media/o.mov',
                 'i': './media/i.mov',
                 'a': './media/a.mov'
             };
@@ -272,7 +278,7 @@
             const resultText = document.getElementById('resultText').textContent.split(': ')[1] || '';
             navigator.clipboard.writeText(resultText)
                 .then(() => {
-                    <!-- alert('Result copied to clipboard!'); -->
+                    // alert('Result copied to clipboard!');
                 })
                 .catch(err => {
                     console.error('Copy failed:', err);
