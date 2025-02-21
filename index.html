@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Base3 Audio Encoder</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+        }
+        #encodedText {
+            margin: 15px 0;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <h1>Base3 Audio Encoder</h1>
+    <textarea id="inputText" placeholder="輸入文字..."></textarea>
+    <button onclick="encodeAndProcess()">轉換並生成音訊</button>
+    <div id="encodedText"></div>
+    <audio id="audioPlayer" controls style="display: none;"></audio>
+    <div>
+        <button id="playBtn" onclick="playAudio()" disabled>播放</button>
+        <button id="downloadBtn" onclick="downloadAudio()" disabled>下載</button>
+    </div>
+
+    <script>
+        let audioBlob = null;
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function textToBase3(text) {
+            const asciiArray = Array.from(text).map(char => char.charCodeAt(0));
+            let num = BigInt(asciiArray.reduce((acc, val) => acc * 256n + BigInt(val), 0n));
+            let base3 = '';
+            
+            if (num === 0n) return 'o';
+            
+            while (num > 0n) {
+                const digit = num % 3n;
+                base3 = (digit === 0n ? 'o' : digit === 1n ? 'i' : 'a') + base3;
+                num = num / 3n;
+            }
+            return base3;
+        }
+
+        async function encodeAndProcess() {
+            const input = document.getElementById('inputText').value;
+            if (!input) {
+                alert('請輸入文字');
+                return;
+            }
+
+            const encoded = textToBase3(input);
+            document.getElementById('encodedText').textContent = '編碼結果: ' + encoded;
+
+            try {
+                const audioFiles = {
+                    'o': './media/o.mov',
+                    'i': './media/i.mov',
+                    'a': './media/a.mov'
+                };
+
+                // 載入並解碼所有音訊檔案
+                const audioBuffers = await Promise.all(
+                    Array.from(encoded).map(async char => {
+                        const response = await fetch(audioFiles[char]);
+                        const arrayBuffer = await response.arrayBuffer();
+                        return audioContext.decodeAudioData(arrayBuffer);
+                    })
+                );
+
+                // 計算總長度並創建新的 AudioBuffer
+                const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+                const sampleRate = audioBuffers[0].sampleRate; // 假設所有檔案採樣率相同
+                const numberOfChannels = audioBuffers[0].numberOfChannels; // 假設声道數相同
+                const combinedBuffer = audioContext.createBuffer(numberOfChannels, totalLength, sampleRate);
+
+                // 合併音訊數據
+                let offset = 0;
+                for (let buffer of audioBuffers) {
+                    for (let channel = 0; channel < numberOfChannels; channel++) {
+                        combinedBuffer.getChannelData(channel).set(buffer.getChannelData(channel), offset);
+                    }
+                    offset += buffer.length;
+                }
+
+                // 將 AudioBuffer 轉為 WAV 格式（MOV 無法直接在前端生成）
+                audioBlob = audioBufferToWav(combinedBuffer);
+
+                // 更新 audio 元素
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = URL.createObjectURL(audioBlob);
+                audioPlayer.style.display = 'block';
+
+                // 啟用按鈕
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('downloadBtn').disabled = false;
+
+            } catch (error) {
+                console.error('音訊處理失敗:', error);
+                alert('音訊處理失敗，請確保 media 資料夾中有 o.mov, i.mov, a.mov 檔案且格式兼容');
+            }
+        }
+
+        function playAudio() {
+            const audioPlayer = document.getElementById('audioPlayer');
+            audioPlayer.play();
+        }
+
+        function downloadAudio() {
+            if (!audioBlob) return;
+            const url = URL.createObjectURL(audioBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'encoded_audio.wav'; // 輸出為 WAV 格式
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 將 AudioBuffer 轉為 WAV 的輔助函數
+        function audioBufferToWav(buffer) {
+            const numberOfChannels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const length = buffer.length * numberOfChannels * 2; // 2 bytes per sample
+            const arrayBuffer = new ArrayBuffer(44 + length);
+            const view = new DataView(arrayBuffer);
+
+            // WAV 頭資訊
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + length, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, numberOfChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numberOfChannels * 2, true); // byte rate
+            view.setUint16(32, numberOfChannels * 2, true); // block align
+            view.setUint16(34, 16, true); // bits per sample
+            writeString(view, 36, 'data');
+            view.setUint32(40, length, true);
+
+            // 寫入音訊數據
+            let offset = 44;
+            for (let i = 0; i < buffer.length; i++) {
+                for (let channel = 0; channel < numberOfChannels; channel++) {
+                    const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+                    view.setInt16(offset, sample * 0x7FFF, true);
+                    offset += 2;
+                }
+            }
+
+            return new Blob([arrayBuffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+    </script>
+</body>
+</html>
