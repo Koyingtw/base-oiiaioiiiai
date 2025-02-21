@@ -165,6 +165,7 @@
         const statusEl = document.getElementById('status');
 
         function textToBase3(text) {
+<<<<<<< HEAD
             let num = 0n;
             for (let char of text) {
                 const codePoint = BigInt(char.codePointAt(0));
@@ -172,7 +173,12 @@
             }
             if (num === 0n) return 'o';
 
+=======
+            const asciiArray = Array.from(text).map(char => char.charCodeAt(0));
+            let num = BigInt(asciiArray.reduce((acc, val) => acc * 256n + BigInt(val), 0n));
+>>>>>>> parent of f926ca1 (support chinese)
             let base3 = '';
+            if (num === 0n) return 'o';
             while (num > 0n) {
                 const digit = num % 3n;
                 base3 = (digit === 0n ? 'o' : digit === 1n ? 'i' : 'a') + base3;
@@ -182,6 +188,7 @@
         }
 
         function base3ToText(base3) {
+            // 將 o=0, i=1, a=2 轉回數字
             let num = 0n;
             for (let char of base3) {
                 if (char === 'o') num = num * 3n + 0n;
@@ -190,16 +197,18 @@
                 else throw new Error('Invalid character in base3 string. Use only o, i, a.');
             }
 
+<<<<<<< HEAD
             let codePoints = [];
             const maxCodePoint = 0x200000n;
+=======
+            // 將數字轉回 ASCII 字串
+            let bytes = [];
+>>>>>>> parent of f926ca1 (support chinese)
             while (num > 0n) {
-                const codePoint = Number(num % maxCodePoint);
-                if (codePoint <= 0x10FFFF) {
-                    codePoints.unshift(codePoint);
-                }
-                num = num / maxCodePoint;
+                bytes.unshift(Number(num % 256n));
+                num = num / 256n;
             }
-            return String.fromCodePoint(...codePoints);
+            return String.fromCharCode(...bytes);
         }
 
         async function processInput() {
@@ -244,7 +253,7 @@
 
         async function generateAudio(encodedString) {
             const audioFiles = {
-                'o': './media/o.mov',
+                'o': './media/o.mov', // 更新為 .wav，確保檔案格式正確
                 'i': './media/i.mov',
                 'a': './media/a.mov'
             };
@@ -307,6 +316,7 @@
 
         function copyResult() {
             const resultText = document.getElementById('resultText').textContent.split(': ')[1] || '';
+<<<<<<< HEAD
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(resultText)
                     .then(() => console.log('Result copied to clipboard'))
@@ -323,6 +333,16 @@
                 document.body.removeChild(textarea);
                 console.log('Result copied to clipboard (fallback)');
             }
+=======
+            navigator.clipboard.writeText(resultText)
+                .then(() => {
+                    <!-- alert('Result copied to clipboard!'); -->
+                })
+                .catch(err => {
+                    console.error('Copy failed:', err);
+                    alert('Failed to copy result');
+                });
+>>>>>>> parent of f926ca1 (support chinese)
         }
 
         function audioBufferToWav(buffer) {
